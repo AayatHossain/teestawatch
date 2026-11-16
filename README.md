@@ -12,6 +12,24 @@ The AI and data pipeline behind **[TeestaWatch](https://aayathossain.github.io/t
   <img src="docs/screens/villages.jpg" width="49%" alt="Villages at risk">
 </p>
 
+## The problem
+
+The Teesta River in northern Bangladesh floods every monsoon, and it keeps shifting sideways, eating into its banks. Between 2016 and 2026 it took 10,777 ha of land: fields, roads and homes. People living along it need answers to three questions:
+
+1. **Where is the water right now?** Floods come in the monsoon, when thick clouds hide the ground from normal satellite cameras.
+2. **Which land will the river take next?** The river changes course every year, so last year's map is already out of date.
+3. **Which villages are in danger first?** Help is limited, so it has to go where the river will arrive soonest.
+
+## How this project helps
+
+| Question | Answer |
+|---|---|
+| Where is the water? | Flood maps from radar satellites, which see through clouds, day or night |
+| Which land goes next? | A forecast of the land the river is likely to take in 2027 |
+| Which villages first? | 7,664 settlements ranked by how soon the river is likely to reach them |
+
+Everything is shown on a free public website: **[TeestaWatch](https://aayathossain.github.io/teestawatch-web/)**.
+
 ## What's inside
 
 - **Data pipeline.** Pulls Sentinel-1 radar, NASA optical images, NASA water maps and elevation data, processes them, and puts them all on one common map grid.
@@ -120,7 +138,7 @@ A convolutional GRU carries the river's movement from year to year, and a U-Net 
 | Active channel | The river's dry-season footprint: open water plus bare sand |
 | IoU | Intersection over union: the overlap between predicted and true water divided by their combined area. 1.0 is perfect |
 | F1 | The balance between precision (how much of the marked water is real) and recall (how much of the real water was found) |
-| AUC | The chance the model scores a pixel that was eroded above one that was not. 0.5 is a coin flip, 1.0 is perfect |
+| AUC | The chance the model scores a place the river did reach above one it did not. 0.5 is a coin flip, 1.0 is perfect |
 | U-Net | A network that takes an image and outputs a map of the same size |
 | ConvGRU | A memory layer that tracks change over time while keeping the map's layout |
 | First-passage model | Gives the probability that a bank drifting at a given average speed, with year-to-year variation, covers a distance within a given time (an inverse-Gaussian distribution) |
