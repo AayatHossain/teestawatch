@@ -1,12 +1,6 @@
 # TeestaWatch ML
 
-The AI and data pipeline behind **[TeestaWatch](https://aayathossain.github.io/teestawatch-web/)**. It maps floods, tracks riverbank erosion, forecasts next year's land loss, and ranks the villages in the path of the Teesta River in northern Bangladesh, using NASA and Sentinel-1 satellite data.
-
-<div align="center">
-  <img src="docs/screens/home.jpg" width="48%" alt="TeestaWatch home">&nbsp;<img src="docs/screens/floods.jpg" width="48%" alt="Flood maps">
-  <br>
-  <img src="docs/screens/riverbank.jpg" width="48%" alt="2027 erosion forecast">&nbsp;<img src="docs/screens/villages.jpg" width="48%" alt="Villages at risk">
-</div>
+**AI and satellite data that map floods, forecast riverbank erosion and warn the villages in the path of the Teesta River in Bangladesh.**
 
 ## The problem
 
@@ -25,6 +19,12 @@ The Teesta River in northern Bangladesh floods every monsoon, and it keeps shift
 | Which villages first? | 7,664 settlements ranked by how soon the river is likely to reach them |
 
 Everything is shown on a free public website: **[TeestaWatch](https://aayathossain.github.io/teestawatch-web/)**.
+
+<div align="center">
+  <img src="docs/screens/home.jpg" width="48%" alt="TeestaWatch home">&nbsp;<img src="docs/screens/floods.jpg" width="48%" alt="Flood maps">
+  <br>
+  <img src="docs/screens/riverbank.jpg" width="48%" alt="2027 erosion forecast">&nbsp;<img src="docs/screens/villages.jpg" width="48%" alt="Villages at risk">
+</div>
 
 ## What's inside
 
