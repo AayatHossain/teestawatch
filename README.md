@@ -11,8 +11,6 @@ The AI and data pipeline behind **[TeestaWatch](https://aayathossain.github.io/t
 
 ## What's inside
 
-I'm **Md. Aayat Hossain Mridha**, the team's AI and backend engineer. I built everything in this repository:
-
 - **Data pipeline.** Pulls Sentinel-1 radar, NASA optical images, NASA water maps and elevation data, processes them, and puts them all on one common map grid.
 - **TG-FloodNet.** The flood-mapping network: its design, its training on a public flood benchmark, and its fine-tuning on the Teesta.
 - **Erosion forecast.** The ConvGRU U-Net that predicts which land the river will take next year.
