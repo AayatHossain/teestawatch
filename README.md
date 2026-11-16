@@ -20,6 +20,8 @@ The Teesta River in northern Bangladesh floods every monsoon, and it keeps shift
 
 Everything is shown on a free public website: **[TeestaWatch](https://aayathossain.github.io/teestawatch-web/)**.
 
+## Screenshots
+
 <div align="center">
   <img src="docs/screens/home.jpg" width="48%" alt="TeestaWatch home">&nbsp;<img src="docs/screens/floods.jpg" width="48%" alt="Flood maps">
   <br>
