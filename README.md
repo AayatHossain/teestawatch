@@ -9,6 +9,17 @@ The AI and data pipeline behind **[TeestaWatch](https://aayathossain.github.io/t
   <img src="docs/screens/villages.jpg" width="49%" alt="Villages at risk">
 </p>
 
+## What's inside
+
+I'm **Md. Aayat Hossain Mridha**, the team's AI and backend engineer. I built everything in this repository:
+
+- **Data pipeline.** Pulls Sentinel-1 radar, NASA optical images, NASA water maps and elevation data, processes them, and puts them all on one common map grid.
+- **TG-FloodNet.** The flood-mapping network: its design, its training on a public flood benchmark, and its fine-tuning on the Teesta.
+- **Erosion forecast.** The ConvGRU U-Net that predicts which land the river will take next year.
+- **Village risk model.** Estimates when the river will reach each of 395,693 homes.
+- **Evaluation.** The independent test on 50 hand-labelled tiles, including the comparison with NASA's own flood product.
+- **Website data.** The export that turns every result into the maps and numbers on the website.
+
 ## At a glance
 
 | | |
@@ -21,42 +32,98 @@ The AI and data pipeline behind **[TeestaWatch](https://aayathossain.github.io/t
 
 ## Results
 
-### Beats NASA's own flood product by 66% on real Teesta floods
+### 66% better than NASA's own flood product on the 2025 Teesta flood
 
 | What the AI does | How well | What it means |
 |---|---|---|
-| **Maps floods** from radar satellite images | **82% F1** on 50 flood scenes it never saw | Sees flood water through monsoon clouds, day or night. 87% of the water it marks is real water |
-| **Outperforms NASA OPERA**, the official flood product | **0.72 vs 0.43 IoU** on the same 2025 floods | 66% more accurate, checked against hand-drawn ground truth |
+| **Maps floods** from radar satellite images | **0.82 F1, 0.69 IoU** on 50 hand-labelled test tiles it never saw | Sees flood water through monsoon clouds, day or night. 87% of the water it marks is real water |
+| **Outperforms NASA OPERA**, the official flood product | **0.72 vs 0.43 IoU** on the same 13 tiles from the 2025 flood | 66% higher IoU, checked against hand-drawn ground truth |
 | **Forecasts riverbank erosion** a year ahead | **0.92 and 0.95 AUC** on two future years | Ranks land the river will take above safe land 92–95% of the time, ahead of a recent-erosion baseline (0.84, 0.91) |
 | **Predicts when the river reaches each home** | **0.85 AUC** over a 6-year backtest | Given only 2016–2019, it ranked land the river reached by 2025 above land it spared 85% of the time |
 
-Every score comes from data the models never trained on. Full numbers are in [results/metrics.json](results/metrics.json).
+Every score comes from data the models never trained on. The terms are explained [below](#terms-used), and the full numbers are in [results/metrics.json](results/metrics.json).
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    A[Sentinel-1 SAR<br/>ASF HyP3 RTC 10 m] --> F[TG-FloodNet<br/>3-model ensemble]
-    B[NASADEM<br/>HAND + distance to river] --> F
-    C[NASA HLS<br/>optical, 2016–2026] --> L[Flood labels<br/>for fine-tuning]
+    A["Sentinel-1 radar images<br/>see through clouds, 10 m"] --> F["TG-FloodNet<br/>flood-mapping AI"]
+    B["NASA elevation model<br/>height above the river"] --> F
+    C["NASA optical images<br/>2016–2026"] --> L["Training labels<br/>from cloud-free images"]
     L --> F
-    F --> FM[Flood maps<br/>4 events]
-    C --> CH[Yearly active channel<br/>+ land lost per year]
-    CH --> E[ConvGRU U-Net<br/>erosion forecast]
-    E --> EM[2027 risk map]
-    CH --> V[First-passage model<br/>river arrival time]
-    G[Google Open Buildings<br/>+ OSM villages] --> V
-    V --> VR[Village risk<br/>7,664 settlements]
-    FM --> W[Website export]
+    F --> FM["Flood maps<br/>4 flood events"]
+    C --> CH["River position<br/>every year"]
+    CH --> E["ConvGRU U-Net<br/>erosion forecast AI"]
+    E --> EM["2027 erosion<br/>risk map"]
+    CH --> V["Arrival-time model<br/>when the river reaches a home"]
+    G["Google building footprints<br/>+ OpenStreetMap names"] --> V
+    V --> VR["Risk level for<br/>7,664 settlements"]
+    FM --> W["Website"]
     EM --> W
     VR --> W
 ```
 
-**TG-FloodNet (Terrain-Gated Flood Network).** A ResNet-34 U-Net that reads radar backscatter (VV, VH, VV−VH) together with two terrain layers: height above the nearest drainage and distance to the stream. The terrain branch gates the decoder, so the model learns that water collects in low ground near channels and is unlikely on high ground, even where radar alone is ambiguous. It is trained on Sen1Floods11, then fine-tuned on the Teesta with labels taken from cloud-free NASA HLS optical images, replaying Sen1Floods11 to keep its general skill. Three seeds are averaged.
+### TG-FloodNet (Terrain-Gated Flood Network)
 
-**ConvGRU U-Net erosion forecast.** For each 30 m pixel near the river, the model reads five years of dry-season history (water, sand, MNDWI, NDVI, the active channel and the land already reached) plus terrain. A convolutional GRU carries the river's movement through time, and a U-Net decoder predicts which land the river will reach next year. The release model is retrained on 2018–2026 and forecasts 2027.
+TG-FloodNet reads a 512 × 512 radar tile (5 km across at 10 m per pixel) and marks every pixel as water or land. Radar alone gets confused: wet soil, smooth roads and radar shadows can look like water. TG-FloodNet adds the terrain, because flood water collects in low ground near channels and rarely sits on high ground.
 
-**Village risk.** Every Google Open Buildings footprint inside the corridor is scored. Bank retreat rates measured along 250 m transects feed a first-passage (inverse-Gaussian) model that gives each home the probability of the river reaching it within 1, 3 and 5 years. Homes are grouped into settlements and named from OpenStreetMap and administrative boundaries.
+| Part | What it does |
+|---|---|
+| Polarisation stem | Processes the two radar channels (VV, VH) and their difference separately, then reweights them with squeeze-and-excitation |
+| ResNet-34 encoder | Extracts features at five scales, starting from ImageNet weights |
+| Context block | ASPP (convolutions at several spacings) plus a 2-layer transformer, so every pixel sees the whole 5 km tile |
+| Terrain branch | Turns height-above-drainage and distance-to-stream into gates that strengthen or suppress the decoder's skip connections. Terrain is hidden on 30% of training steps so the model does not lean on it alone |
+| Gated decoder | Attention gates on the skip connections and CBAM (channel and spatial attention) in every block |
+| Extra heads | A water-edge head for sharp shorelines, and two deep-supervision heads used during training |
+| Loss | Cross-entropy + Dice, with Lovász hinge (which directly optimises IoU) phased in, plus edge and deep-supervision losses |
+
+**Training.**
+1. Train on Sen1Floods11, a public benchmark of hand-labelled flood images.
+2. Fine-tune on the Teesta, using labels taken from cloud-free NASA optical images on the same dates. Sen1Floods11 batches are mixed in ("replay") so the model keeps its general skill.
+3. Average three models trained with different random seeds.
+
+### ConvGRU U-Net erosion forecast
+
+For every 30 m pixel near the river, the model reads five years of dry-season history plus terrain:
+- how often the pixel was water or sand;
+- water and vegetation indices;
+- where the river channel was;
+- which land the river had already reached.
+
+A convolutional GRU carries the river's movement from year to year, and a U-Net decoder outputs the chance that each pixel is reached next year. The release model is retrained on 2018–2026 and forecasts 2027.
+
+### Village risk
+
+1. **Bank movement.** Measure how fast each bank moved outward, year by year, along cross-sections every 250 m.
+2. **Arrival probability.** A first-passage model turns the bank's average speed and its year-to-year variation into each home's chance of the river reaching it within 1, 3 and 5 years.
+3. **Settlements.** Group the homes into settlements and name them from OpenStreetMap.
+4. **Risk level.** Each settlement takes its level from its closest home:
+   - **High:** within 400 m of the river, or under 2 years away at the measured speed.
+   - **Medium:** within 1 km, or under 5 years away.
+   - **Low:** everything else.
+
+## Terms used
+
+| Term | Meaning |
+|---|---|
+| SAR | Synthetic aperture radar. A satellite radar that sees through clouds and at night. Calm water reflects the signal away, so it looks dark |
+| Sentinel-1 | The European radar satellites used here. VV and VH are the two polarisations they record |
+| RTC | Radiometric terrain correction. Removes the brightness distortion hills cause in radar images |
+| ASF HyP3 | The Alaska Satellite Facility's free cloud service that applies RTC |
+| HLS | Harmonized Landsat Sentinel-2. NASA's combined optical images from Landsat and Sentinel-2 |
+| OPERA DSWx | NASA JPL's ready-made surface-water maps, made from optical (HLS) or radar (S1) images |
+| NASADEM | NASA's elevation model of the Earth's surface |
+| HAND | Height above nearest drainage: how high a pixel sits above the closest stream. Low HAND floods easily |
+| Sen1Floods11 | A public benchmark of Sentinel-1 images with hand-drawn flood masks from 11 flood events |
+| MNDWI, NDVI | Standard optical indices for water and for vegetation |
+| Active channel | The river's dry-season footprint: open water plus bare sand |
+| IoU | Intersection over union: the overlap between predicted and true water divided by their combined area. 1.0 is perfect |
+| F1 | The balance between precision (how much of the marked water is real) and recall (how much of the real water was found) |
+| AUC | The chance the model scores a pixel that was eroded above one that was not. 0.5 is a coin flip, 1.0 is perfect |
+| U-Net | A network that takes an image and outputs a map of the same size |
+| ConvGRU | A memory layer that tracks change over time while keeping the map's layout |
+| First-passage model | Gives the probability that a bank drifting at a given average speed, with year-to-year variation, covers a distance within a given time (an inverse-Gaussian distribution) |
+| Backtest | Fitting a model on past years only and checking it against what happened later |
 
 ## Repository layout
 
