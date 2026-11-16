@@ -21,7 +21,7 @@ loss = [dict(year=y, newly_eroded_ha=round(float((corr[y] & ~corr[YEARS[i - 1]])
              corridor_km2=round(float(corr[y].sum() * 9e-4), 1), active_channel_km2=round(float(chan[y].sum() * 9e-4), 1))
         for i, y in enumerate(YEARS) if i]
 json.dump({"method": "land reached by the river for the first time in the 2016-2026 record (corridor(y) - corridor(y-1)); "
-                     "active channel = dry-season water + bare sand (HLS); see pipeline/s18_erosion.py",
+                     "active channel = dry-season water + bare sand (HLS); see pipeline/s17_erosion.py",
            "unit": "ha", "area": "Teesta in Bangladesh (OSM border), Brahmaputra side excluded", "years": loss},
           open(OUT / "loss_by_year.json", "w"), indent=1)
 print("newly eroded land (ha/yr):", {r["year"]: r["newly_eroded_ha"] for r in loss})

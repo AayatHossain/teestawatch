@@ -11,7 +11,7 @@ from shapely.geometry import shape, LineString, Point
 from shapely.ops import linemerge, unary_union
 from scipy import ndimage
 from skimage.morphology import disk, binary_closing
-from common import ROOT, DATA, DER, CRS, RIVER, grid, teesta_mask, write
+from common import CLOUDY, ROOT, DATA, DER, CRS, RIVER, grid, on_grid, teesta_mask, write
 
 YEARS = list(range(2016, 2027))
 OUT = ROOT / "outputs" / "erosion"; OUT.mkdir(parents=True, exist_ok=True)
@@ -21,14 +21,6 @@ inside = teesta_mask(30)
 dline = ndimage.distance_transform_edt(~rasterize(RIVER.geometry, out_shape=(h, w), transform=t, fill=0, default_value=1, dtype="uint8").astype(bool)) * 30
 corridor = inside & (dline <= 3000)
 near = dline <= 1500
-CLOUDY = 0b11110
-
-
-def on_grid(path, nodata, dtype):
-    dst = np.full((h, w), nodata, dtype)
-    with rasterio.open(path) as s:
-        reproject(rasterio.band(s, 1), dst, src_nodata=nodata, dst_transform=t, dst_crs=CRS, dst_nodata=nodata, resampling=Resampling.nearest)
-    return dst
 
 
 gran = defaultdict(dict)
@@ -148,7 +140,7 @@ res = {"fit_years": "2016-2022", "predict_year": 2025, "n_bank_points": int(len(
        "note": "bank position = outermost active-channel distance from the smoothed centre line on each side of a 250 m transect"}
 json.dump(res, open(OUT / "backtest.json", "w"), indent=1)
 keep = ["transect", "chainage_m", "left_rate_m_per_yr", "right_rate_m_per_yr"] + [f"{s}_{y}" for s in ("left", "right") for y in YEARS]
-tr[keep + ["geometry"]].to_crs(4326).to_file(OUT / "transects.geojson", driver="GeoJSON")
+tr[keep + ["geometry"]].to_crs(4326).to_file(OUT / "channel_transects.geojson", driver="GeoJSON")
 print(f"transects: {len(tr)} | median outward rate left {np.nanmedian(tr.left_rate_m_per_yr):.1f}, right {np.nanmedian(tr.right_rate_m_per_yr):.1f} m/yr")
 print("backtest:", res)
 
@@ -159,4 +151,5 @@ for a_, y in zip(ax, (2016, 2021, 2026)):
     img[inside] = (0.75, 0.82, 0.70); img[c == 2] = (0.93, 0.85, 0.6); img[c == 1] = (0.15, 0.35, 0.8)
     edge = channels[y] & ~ndimage.binary_erosion(channels[y]); img[edge] = (0.85, 0.1, 0.1)
     a_.imshow(img[400:3725, 0:2600]); a_.set_title(f"{y}: water (blue), sand (beige), bank line (red)"); a_.axis("off")
-plt.tight_layout(); plt.savefig(ROOT / "outputs" / "quicklook" / "channel_banks.png", dpi=90)
+QL = ROOT / "outputs" / "quicklook"; QL.mkdir(parents=True, exist_ok=True)
+plt.tight_layout(); plt.savefig(QL / "channel_banks.png", dpi=90)

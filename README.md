@@ -63,13 +63,13 @@ flowchart LR
 ```
 pipeline/              numbered steps, run in order
   common.py            paths, the shared EPSG:32645 grid, raster helpers
-  s01-s11              study area, NASA/ASF downloads, HyP3 radar, DEM/HAND, mosaics
-  s12-s13              hand-labelling tiles and the browser labelling tool
-  s14-s16              flood labels, fine-tuning pack, flood maps
-  s17-s20              active channel, erosion history, forecast data, 2027 forecast
-  s21-s22              building footprints, village risk
-  s23                  independent hand-label evaluation
-  s24                  export for the website
+  s01-s10              study area, NASA/ASF downloads, HyP3 radar, DEM/HAND, terrain, radar mosaics
+  s11-s12              hand-labelling tiles and the browser labelling tool
+  s13-s15              flood labels, fine-tuning pack, flood maps
+  s16-s19              active channel, erosion history, forecast data, 2027 forecast
+  s20-s21              building footprints, village risk
+  s22                  independent hand-label evaluation
+  s23                  export for the website
 models/
   flood/tgfloodnet.py        TG-FloodNet, Sen1Floods11 training
   flood/finetune_teesta.py   Teesta fine-tuning
@@ -105,7 +105,7 @@ weights/erosion/seed0.pt  seed1.pt  seed2.pt
 
 ## Running the pipeline
 
-Each step reads the outputs of the earlier ones from `data/` and writes its own.
+Run the steps from inside `pipeline/`, in order. Each one reads the outputs of the earlier steps from `data/` and writes its own. With the released weights, the steps below rebuild every map and number:
 
 ```bash
 cd pipeline
@@ -115,20 +115,39 @@ python s05_s1_search.py
 python s06_order_hyp3.py             # orders RTC processing on ASF HyP3
 python s07_fetch_hyp3.py
 python s08_dem_hand.py
-python s10_terrain.py
-python s11_s1_mosaic.py
-python s16_flood_maps.py             # flood maps with TG-FloodNet
-python s17_channels.py
-python s18_erosion.py
-python s19_erosion_pack.py
-python s20_erosion_forecast.py       # 2027 erosion risk
-python s21_buildings.py
-python s22_village_risk.py
-python s23_hand_label_eval.py        # reproduces the flood test scores
-python s24_web_export.py             # writes web_data/ for the website
+python s09_terrain.py
+python s10_s1_mosaic.py
+python s15_flood_maps.py             # flood maps with TG-FloodNet
+python s16_channels.py
+python s17_erosion.py
+python s18_erosion_pack.py
+python s19_erosion_forecast.py       # 2027 erosion risk
+python s20_buildings.py
+python s21_village_risk.py
+python s22_hand_label_eval.py        # reproduces the flood test scores
+python s23_web_export.py             # writes web_data/ for the website
 ```
 
-**Training from scratch.** `models/flood/tgfloodnet.py` trains on Sen1Floods11 (`s04` downloads it and `s10` adds the terrain layers). `s14` and `s15` build the Teesta fine-tuning set for `models/flood/finetune_teesta.py`, and `s19` builds the input for `models/erosion/convgru_unet.py` (set `TW_FINAL=1` for the 2018–2026 release model). The training scripts accept `TW_SMOKE=1` for a quick run on a small slice.
+The remaining steps are only needed to retrain or relabel: `s02` lists the available NASA granules, `s04` downloads Sen1Floods11, `s11`-`s12` build the hand-labelling pages, and `s13`-`s14` build the Teesta fine-tuning set.
+
+**Training from scratch.**
+
+| Model | Data | Command |
+|---|---|---|
+| TG-FloodNet | Sen1Floods11 (`s04`, terrain from `s09`) | `python models/flood/tgfloodnet.py` |
+| Teesta fine-tuning | `s13` + `s14` | `python models/flood/finetune_teesta.py` |
+| ConvGRU U-Net | `s18` | `python models/erosion/convgru_unet.py` |
+
+Outputs go to `runs/<model>/`.
+
+| Setting | Effect |
+|---|---|
+| `TW_SMOKE=1` | Quick run on a small slice, to check that everything works |
+| `TW_FINAL=1` | ConvGRU only: train on 2018–2026 for the 2027 release model |
+| `TW_OUT` | Output folder (default `runs/<model>`) |
+| `TW_DATA`, `TW_TERRAIN` | Sen1Floods11 folder and its terrain layers (default `data/sen1floods11`) |
+| `TW_FT`, `TW_EROSION_DATA` | Fine-tuning pack and erosion stacks (default `data/ft_teesta`, `data/erosion_pack`) |
+| `TW_EPOCHS`, `TW_STEPS` | Override the training length |
 
 ## Data sources
 

@@ -3,23 +3,15 @@ import glob, re, json
 from collections import defaultdict
 import numpy as np, rasterio
 from rasterio.warp import reproject, Resampling
-from common import DATA, DER, CRS, grid, teesta_mask
+from common import CLOUDY, DATA, DER, CRS, grid, on_grid, teesta_mask
 
 YEARS = list(range(2016, 2027))
 OUT = DATA / "erosion_pack"; OUT.mkdir(exist_ok=True)
 t, h, w = grid(30)
 inside = teesta_mask(30)
-CLOUDY = 0b11110
 rr, cc = np.where(inside)
 r0, r1, c0, c1 = rr.min() // 32 * 32, min(h, (rr.max() // 32 + 1) * 32), cc.min() // 32 * 32, min(w, (cc.max() // 32 + 1) * 32)
 S = np.s_[r0:r1, c0:c1]
-
-
-def on_grid(path, nodata, dtype, rs=Resampling.nearest):
-    dst = np.full((h, w), nodata, dtype)
-    with rasterio.open(path) as s:
-        reproject(rasterio.band(s, 1), dst, src_nodata=nodata, dst_transform=t, dst_crs=CRS, dst_nodata=nodata, resampling=rs)
-    return dst
 
 
 gran = defaultdict(dict)

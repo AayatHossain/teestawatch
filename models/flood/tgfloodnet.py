@@ -1,16 +1,15 @@
 """TG-FloodNet: terrain-gated ResNet-34 U-Net for SAR flood mapping, trained on Sen1Floods11."""
-import os, sys, json, time, math, random, glob, csv, shutil, subprocess, platform, io
+import os, sys, json, time, math, random, glob, csv, shutil, platform, io
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
-ABL = sorted(set(filter(None, os.environ.get("TW_ABLATE", "").split(","))))
-assert set(ABL) <= {"a1", "a2", "a3a", "a3b", "a4", "a5b", "ds"}, ABL
-NAME = "tgflood" + ("_no_" + "_".join(ABL) if ABL else "")
+NAME = "tgflood"
 SMOKE = os.environ.get("TW_SMOKE") == "1"
 ON_KAGGLE = Path("/kaggle/working").exists()
-OUT = Path(os.environ.get("TW_OUT", f"/kaggle/working/{NAME}"))
-DATA = Path(os.environ.get("TW_DATA", "/tmp/sen1floods11"))
+ROOT = Path(__file__).resolve().parents[2]
+OUT = Path(os.environ.get("TW_OUT") or (Path("/kaggle/working") if ON_KAGGLE else ROOT / "runs") / NAME)
+DATA = Path(os.environ.get("TW_DATA") or ("/tmp/sen1floods11" if ON_KAGGLE else ROOT / "data" / "sen1floods11"))
 IN_CH = 5
 CHANNELS = ["VV", "VH", "VV-VH", "log1p_HAND", "log1p_dist_stream"]
 _TERR = {}
@@ -18,7 +17,7 @@ _TERR = {}
 
 def terrain_path(chip):
     if not _TERR:
-        roots = [os.environ["TW_TERRAIN"]] if os.environ.get("TW_TERRAIN") else ["/kaggle/input"]
+        roots = [os.environ.get("TW_TERRAIN") or ("/kaggle/input" if ON_KAGGLE else str(DATA / "terrain"))]
         for r in roots:
             for p in glob.glob(os.path.join(r, "**", "*_Terrain.tif"), recursive=True):
                 _TERR[os.path.basename(p).replace("_Terrain.tif", "")] = p
@@ -30,27 +29,22 @@ WARMUP = 0 if SMOKE else 3
 BATCH = 4 if SMOKE else 8
 LR, WD = 5e-4, 1e-4
 CLIP = (-40.0, 10.0)
-TIME_BUDGET_H = 11.0
+TIME_BUDGET_H = 11.0 if ON_KAGGLE else float("inf")
 T_START = time.time()
 TRAIN_FRAC = [0.0]
-OUT.mkdir(parents=True, exist_ok=True)
-LOGF = open(OUT / "log.txt", "a", encoding="utf-8")
+_logf = None
 
 
 def log(*a):
+    global _logf
     s = time.strftime("%H:%M:%S ") + " ".join(str(x) for x in a)
     print(s, flush=True)
-    LOGF.write(s + "\n"); LOGF.flush()
+    if _logf is None:
+        OUT.mkdir(parents=True, exist_ok=True)
+        _logf = open(OUT / "log.txt", "a", encoding="utf-8")
+    _logf.write(s + "\n"); _logf.flush()
 
 
-def pip(pkg, mod=None):
-    try:
-        __import__(mod or pkg)
-    except ImportError:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", pkg], check=True)
-
-
-pip("rasterio")
 import rasterio
 import torch, torch.nn as nn, torch.nn.functional as F
 import torchvision
@@ -159,9 +153,9 @@ class DecoderBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained=True):
         super().__init__()
-        r = torchvision.models.resnet34(weights=torchvision.models.ResNet34_Weights.IMAGENET1K_V1)
+        r = torchvision.models.resnet34(weights=torchvision.models.ResNet34_Weights.IMAGENET1K_V1 if pretrained else None)
         self.stem = nn.Sequential(r.conv1, r.bn1, r.relu)
         self.pool = r.maxpool
         self.l1, self.l2, self.l3, self.l4 = r.layer1, r.layer2, r.layer3, r.layer4
@@ -174,26 +168,6 @@ class Encoder(nn.Module):
         s4 = self.l4(s3)
         return [s0, s1, s2, s3, s4]
 
-
-class UNetR34(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.enc = Encoder()
-        self.d4 = DecoderBlock(512, 256, 256)
-        self.d3 = DecoderBlock(256, 128, 128)
-        self.d2 = DecoderBlock(128, 64, 64)
-        self.d1 = DecoderBlock(64, 64, 32)
-        self.d0 = DecoderBlock(32, 0, 16)
-        self.head = nn.Conv2d(16, 1, 1)
-
-    def forward(self, x):
-        s0, s1, s2, s3, s4 = self.enc(x)
-        y = self.d4(s4, s3)
-        y = self.d3(y, s2)
-        y = self.d2(y, s1)
-        y = self.d1(y, s0)
-        y = self.d0(y)
-        return {"water": self.head(y)}
 
 def small_init(conv, std=1e-3):
     nn.init.normal_(conv.weight, std=std)
@@ -324,52 +298,43 @@ class GatedDecoderBlock(nn.Module):
 
 
 class TGFloodNet(nn.Module):
-    def __init__(self, abl=ABL, p_drop_terrain=0.3):
+    def __init__(self, pretrained=True, p_drop_terrain=0.3):
         super().__init__()
-        self.abl, self.p_drop = set(abl), p_drop_terrain
-        self.stem = None if "a1" in self.abl else PolStem()
-        self.enc = Encoder()
-        self.terrain = None if "a2" in self.abl else TerrainBranch()
-        a, b = "a3a" not in self.abl, "a3b" not in self.abl
-        self.ctx = Context(512, a, b) if (a or b) else None
-        g = "a4" not in self.abl
-        self.d4 = GatedDecoderBlock(512, 256, 256, g)
-        self.d3 = GatedDecoderBlock(256, 128, 128, g)
-        self.d2 = GatedDecoderBlock(128, 64, 64, g)
-        self.d1 = GatedDecoderBlock(64, 64, 32, g)
-        self.d0 = GatedDecoderBlock(32, 0, 16, g)
+        self.p_drop = p_drop_terrain
+        self.stem = PolStem()
+        self.enc = Encoder(pretrained)
+        self.terrain = TerrainBranch()
+        self.ctx = Context(512, True, True)
+        self.d4 = GatedDecoderBlock(512, 256, 256, True)
+        self.d3 = GatedDecoderBlock(256, 128, 128, True)
+        self.d2 = GatedDecoderBlock(128, 64, 64, True)
+        self.d1 = GatedDecoderBlock(64, 64, 32, True)
+        self.d0 = GatedDecoderBlock(32, 0, 16, True)
         self.head = nn.Conv2d(16, 1, 1)
-        self.edge = None if "a5b" in self.abl else nn.Conv2d(16, 1, 1)
-        self.ds = "ds" not in self.abl
-        if self.ds:
-            self.aux8, self.aux4 = nn.Conv2d(128, 1, 1), nn.Conv2d(64, 1, 1)
+        self.edge = nn.Conv2d(16, 1, 1)
+        self.aux8, self.aux4 = nn.Conv2d(128, 1, 1), nn.Conv2d(64, 1, 1)
 
     def forward(self, x, terrain=None):
         if x.shape[1] == 5:
             x, terrain = x[:, :3], x[:, 3:]
-        if self.stem is not None:
-            x = self.stem(x)
-        s0, s1, s2, s3, s4 = self.enc(x)
-        if self.ctx is not None:
-            s4 = self.ctx(s4)
+        s0, s1, s2, s3, s4 = self.enc(self.stem(x))
+        s4 = self.ctx(s4)
         tg = [None] * 4
-        if self.terrain is not None and terrain is not None and not (self.training and random.random() < self.p_drop):
+        if terrain is not None and not (self.training and random.random() < self.p_drop):
             tg = self.terrain(terrain)
         y = self.d4(s4, s3, tg[3])
         y8 = self.d3(y, s2, tg[2])
         y4 = self.d2(y8, s1, tg[1])
         y = self.d1(y4, s0, tg[0])
         y = self.d0(y)
-        out = {"water": self.head(y)}
-        if self.edge is not None:
-            out["edge"] = self.edge(y)
-        if self.ds and self.training:
+        out = {"water": self.head(y), "edge": self.edge(y)}
+        if self.training:
             out["aux8"], out["aux4"] = self.aux8(y8), self.aux4(y4)
         return out
 
 
-def build_model():
-    return TGFloodNet()
+def build_model(pretrained=True):
+    return TGFloodNet(pretrained)
 
 
 def dice_loss(logit, y, valid):
@@ -545,7 +510,7 @@ def run_seed(seed, d, prior_dirs):
     json.dump(conf, open(rd / "confusion.json", "w"), indent=1)
     with open(rd / "per_chip.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["mode", "split", "chip", "iou"]); w.writeheader(); w.writerows(per_rows)
-    json.dump(dict(name=NAME, ablate=ABL, seed=seed, epochs=EPOCHS, batch=BATCH, lr=LR, wd=WD, warmup=WARMUP, clip=CLIP,
+    json.dump(dict(name=NAME, seed=seed, epochs=EPOCHS, batch=BATCH, lr=LR, wd=WD, warmup=WARMUP, clip=CLIP,
                    best_val_iou_t050=best, train_sec=train_sec, infer_ms_per_chip=inf_ms, smoke=SMOKE,
                    params=sum(p.numel() for p in model.parameters())), open(rd / "config.json", "w"), indent=1)
     np.savez_compressed(rd / "preds.npz", **{f"{tag}_{s}": (probs[tag][s] * 255).round().astype(np.uint8)
@@ -591,6 +556,7 @@ def summarise():
 
 
 if __name__ == "__main__":
+    OUT.mkdir(parents=True, exist_ok=True)
     log(f"{NAME} start  smoke={SMOKE}  device={DEV}  out={OUT}")
     with open(OUT / "versions.txt", "w") as f:
         f.write(f"python {platform.python_version()}\ntorch {torch.__version__}\ntorchvision {torchvision.__version__}\n"

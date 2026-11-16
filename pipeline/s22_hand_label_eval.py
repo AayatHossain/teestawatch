@@ -28,7 +28,6 @@ for f in sorted(LAB.glob("labels_part*.json")):
 assert len(labels) == 50, len(labels)
 order = sorted(labels, key=lambda t: tiles.loc[t, "date"])
 
-os.environ.setdefault("TW_OUT", str(ROOT / "cache" / "infer"))
 spec = importlib.util.spec_from_file_location("tg", MODELS / "flood" / "tgfloodnet.py")
 tg = importlib.util.module_from_spec(spec); spec.loader.exec_module(tg)
 DEV = tg.DEV
@@ -36,7 +35,7 @@ norm = json.load(open(WEIGHTS / "flood" / "norm.json"))
 M, S = np.array(norm["mean"], np.float32), np.array(norm["std"], np.float32)
 nets = []
 for s in (0, 1, 2):
-    m = tg.TGFloodNet().to(DEV).eval()
+    m = tg.TGFloodNet(pretrained=False).to(DEV).eval()
     m.load_state_dict(torch.load(WEIGHTS / "flood" / f"seed{s}.pt", map_location=DEV))
     nets.append(m)
 

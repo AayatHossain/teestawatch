@@ -5,9 +5,17 @@ import numpy as np
 
 NAME = "ft_teesta"
 SMOKE = os.environ.get("TW_SMOKE") == "1"
-OUT = Path(os.environ.get("TW_OUT", f"/kaggle/working/{NAME}"))
-OUT.mkdir(parents=True, exist_ok=True)
-FT = Path(os.environ.get("TW_FT") or Path(sorted(glob.glob("/kaggle/input/**/static.npz", recursive=True))[0]).parent)
+ON_KAGGLE = Path("/kaggle/working").exists()
+ROOT = Path(__file__).resolve().parents[2]
+OUT = Path(os.environ.get("TW_OUT") or (Path("/kaggle/working") if ON_KAGGLE else ROOT / "runs") / NAME)
+if os.environ.get("TW_FT"):
+    FT = Path(os.environ["TW_FT"])
+elif ON_KAGGLE:
+    FT = Path(sorted(glob.glob("/kaggle/input/**/static.npz", recursive=True))[0]).parent
+else:
+    FT = ROOT / "data" / "ft_teesta"
+if not (FT / "static.npz").exists():
+    raise FileNotFoundError(f"{FT / 'static.npz'} not found: run pipeline/s14_flood_finetune_pack.py or set TW_FT")
 KINDS = ["tg"]
 SEEDS = [0] if SMOKE else [0, 1, 2]
 STEPS = int(os.environ.get("TW_STEPS", 6 if SMOKE else 1500))
@@ -15,14 +23,19 @@ EVAL_EVERY = 3 if SMOKE else 100
 BT, BR = (1, 1) if SMOKE else (4, 4)
 LR, WD, WARM = 1e-4, 1e-4, (2 if SMOKE else 50)
 WIN, CLIP = 512, (-40.0, 10.0)
-TIME_BUDGET_H = 11.0
+TIME_BUDGET_H = 11.0 if ON_KAGGLE else float("inf")
 T0 = time.time()
-LOGF = open(OUT / "log.txt", "a", encoding="utf-8")
+_logf = None
 
 
 def log(*a):
+    global _logf
     s = time.strftime("%H:%M:%S ") + " ".join(str(x) for x in a)
-    print(s, flush=True); LOGF.write(s + "\n"); LOGF.flush()
+    print(s, flush=True)
+    if _logf is None:
+        OUT.mkdir(parents=True, exist_ok=True)
+        _logf = open(OUT / "log.txt", "a", encoding="utf-8")
+    _logf.write(s + "\n"); _logf.flush()
 
 
 def load_mod(name, file):
@@ -158,7 +171,7 @@ def run(kind, seed):
         log(f"{kind} seed {seed}: done already"); return json.load(open(rd / "metrics.json")), None
     rd.mkdir(parents=True, exist_ok=True)
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
-    mod = MOD[kind]; model = mod.build_model().to(DEV)
+    mod = MOD[kind]; model = mod.build_model(pretrained=False).to(DEV)
     model.load_state_dict(torch.load(FT / f"{kind}_seed{seed}.pt", map_location=DEV))
     before, pb = eval_all(model)
     log(f"{kind} seed {seed} BEFORE: val {before['val/t050']['iou']:.4f} | " + " | ".join(

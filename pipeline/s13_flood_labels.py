@@ -3,21 +3,12 @@ import glob, json, re, datetime as dt
 from collections import defaultdict
 import numpy as np, rasterio
 from rasterio.warp import reproject, Resampling
-from common import DATA, DER, CRS, grid, teesta_mask, write
+from common import CLOUDY, DATA, DER, CRS, grid, on_grid, teesta_mask, write
 
 DATES = ["2017-07-17", "2017-08-10", "2020-06-07", "2020-07-13", "2024-06-10", "2024-07-04", "2025-07-23", "2025-08-16"]
 OUT = DER / "ft_labels"; OUT.mkdir(exist_ok=True)
 t, h, w = grid(30)
 inside = teesta_mask(30)
-CLOUDY = 0b11110
-
-
-def on_grid(path, nodata, dtype):
-    dst = np.full((h, w), nodata, dtype)
-    with rasterio.open(path) as s:
-        reproject(rasterio.band(s, 1), dst, src_nodata=nodata, dst_transform=t, dst_crs=CRS, dst_nodata=nodata,
-                  resampling=Resampling.nearest)
-    return dst
 
 
 gran = defaultdict(dict)

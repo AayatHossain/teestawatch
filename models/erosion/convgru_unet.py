@@ -20,8 +20,17 @@ import numpy as np
 SMOKE = os.environ.get("TW_SMOKE") == "1"
 FINAL = os.environ.get("TW_FINAL") == "1"
 NAME = "convgru_final" if FINAL else "convgru"
-OUT = Path(os.environ.get("TW_OUT", f"/kaggle/working/{NAME}")); OUT.mkdir(parents=True, exist_ok=True)
-BC = Path(os.environ.get("TW_EROSION_DATA") or Path(sorted(glob.glob("/kaggle/input/**/stacks.npz", recursive=True))[0]).parent)
+ON_KAGGLE = Path("/kaggle/working").exists()
+ROOT = Path(__file__).resolve().parents[2]
+OUT = Path(os.environ.get("TW_OUT") or (Path("/kaggle/working") if ON_KAGGLE else ROOT / "runs") / NAME)
+if os.environ.get("TW_EROSION_DATA"):
+    BC = Path(os.environ["TW_EROSION_DATA"])
+elif ON_KAGGLE:
+    BC = Path(sorted(glob.glob("/kaggle/input/**/stacks.npz", recursive=True))[0]).parent
+else:
+    BC = ROOT / "data" / "erosion_pack"
+if not (BC / "stacks.npz").exists():
+    raise FileNotFoundError(f"{BC / 'stacks.npz'} not found: run pipeline/s18_erosion_pack.py or set TW_EROSION_DATA")
 SEEDS = [0] if SMOKE else [0, 1, 2]
 STEPS = int(os.environ.get("TW_STEPS", 4 if SMOKE else (1000 if FINAL else 2000)))
 EVAL_EVERY = 10 ** 9 if FINAL else (2 if SMOKE else 250)
@@ -31,12 +40,17 @@ LR, WD, WARM = 3e-4, 1e-4, (1 if SMOKE else 100)
 TRAIN_Y = list(range(2018, 2027)) if FINAL else [2018, 2019, 2020, 2021, 2022, 2023]
 VAL_Y, TEST_Y, FORECAST_Y = 2024, [2025, 2026], 2027
 ZONE_M = 1000
-LOGF = open(OUT / "log.txt", "a", encoding="utf-8")
+_logf = None
 
 
 def log(*a):
+    global _logf
     s = time.strftime("%H:%M:%S ") + " ".join(str(x) for x in a)
-    print(s, flush=True); LOGF.write(s + "\n"); LOGF.flush()
+    print(s, flush=True)
+    if _logf is None:
+        OUT.mkdir(parents=True, exist_ok=True)
+        _logf = open(OUT / "log.txt", "a", encoding="utf-8")
+    _logf.write(s + "\n"); _logf.flush()
 
 
 import torch
@@ -126,9 +140,9 @@ class DecoderBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, cin):
+    def __init__(self, cin, pretrained=True):
         super().__init__()
-        r = torchvision.models.resnet34(weights=None if SMOKE and not os.environ.get("TW_PRETRAINED") else torchvision.models.ResNet34_Weights.IMAGENET1K_V1)
+        r = torchvision.models.resnet34(weights=torchvision.models.ResNet34_Weights.IMAGENET1K_V1 if pretrained else None)
         c1 = nn.Conv2d(cin, 64, 7, stride=2, padding=3, bias=False)
         with torch.no_grad():
             c1.weight[:, :3] = r.conv1.weight; c1.weight[:, 3:] = r.conv1.weight.mean(1, keepdim=True)
@@ -170,9 +184,9 @@ CH = [64, 64, 128, 256, 512]
 
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained=True):
         super().__init__()
-        self.enc = Encoder(10)
+        self.enc = Encoder(10, pretrained)
         self.temp = nn.ModuleList([Temporal(c) for c in CH])
         dec = [(512, 256, 256), (256, 128, 128), (128, 64, 64), (64, 64, 32), (32, 0, 16)]
         self.dec = nn.ModuleList([DecoderBlock(*d) for d in dec])
@@ -275,7 +289,7 @@ def run(seed):
         log(f"seed {seed}: done already"); return json.load(open(rd / "metrics.json"))
     rd.mkdir(parents=True, exist_ok=True)
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
-    model = Net().to(DEV)
+    model = Net(pretrained=not SMOKE).to(DEV)
     opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WD)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: (s + 1) / WARM if s < WARM else 0.5 * (1 + math.cos(math.pi * (s - WARM) / max(STEPS - WARM, 1))))
     scaler = torch.amp.GradScaler(enabled=DEV.type == "cuda")

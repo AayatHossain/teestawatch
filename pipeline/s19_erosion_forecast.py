@@ -12,15 +12,14 @@ from shapely.geometry import shape
 
 from common import CRS, DATA, DER, MODELS, ROOT, WEIGHTS, grid, write
 
-HIGH, MEDIUM = 0.664, 0.221  # F1-best threshold on 2024 and one third of it
-os.environ.setdefault("TW_EROSION_DATA", str(DATA / "erosion_pack"))
-os.environ.setdefault("TW_OUT", str(ROOT / "cache" / "erosion_infer"))
+HIGH, MEDIUM = 0.664, 0.221  # F1-best threshold of the tested model on 2024, and one third of it
+PIXEL_HA = 0.09  # one 30 m pixel
 spec = importlib.util.spec_from_file_location("convgru", MODELS / "erosion" / "convgru_unet.py")
 cg = importlib.util.module_from_spec(spec); spec.loader.exec_module(cg)
 
 probs = []
 for s in (0, 1, 2):
-    net = cg.Net().to(cg.DEV)
+    net = cg.Net(pretrained=False).to(cg.DEV)
     net.load_state_dict(torch.load(WEIGHTS / "erosion" / f"seed{s}.pt", map_location=cg.DEV))
     probs.append(np.round(cg.predict(net, 2027)[1] * 255))  # 8-bit probabilities, as stored by the training run
 risk_p = np.round(np.mean(probs, 0)) / 255
@@ -41,8 +40,8 @@ gdf = gpd.GeoDataFrame(rows, crs=CRS); gdf["area_ha"] = (gdf.area / 1e4).round(2
 out = ROOT / "outputs" / "erosion"; out.mkdir(parents=True, exist_ok=True)
 gdf.to_crs(4326).to_file(out / "forecast_2027.geojson", driver="GeoJSON")
 summary = {"year": 2027, "model": "ConvGRU U-Net, 3-model ensemble",
-           "high_ha": round(float((cls == 3).sum() * 0.09), 1), "medium_ha": round(float((cls == 2).sum() * 0.09), 1),
-           "expected_newly_eroded_ha": round(float(risk_p[zn].sum() * 0.09), 1),
+           "high_ha": round(float((cls == 3).sum() * PIXEL_HA), 1), "medium_ha": round(float((cls == 2).sum() * PIXEL_HA), 1),
+           "expected_newly_eroded_ha": round(float(risk_p[zn].sum() * PIXEL_HA), 1),
            "classes": {"High": f"p >= {HIGH}", "Medium": f"p >= {MEDIUM}", "Low": "rest of the 1 km band"},
            "test_scores": json.load(open(ROOT / "results" / "metrics.json"))["erosion_forecast"]}
 json.dump(summary, open(out / "forecast_2027.json", "w"), indent=1)

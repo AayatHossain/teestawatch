@@ -16,12 +16,12 @@ from common import CRS, DER, MODELS, ROOT, WEIGHTS, grid, teesta_mask, write
 
 GAMMA_TO_SIGMA_DB = -1.0  # HyP3 RTC is gamma0, the training data is sigma0 (cos 37 deg)
 WIN, OVL, THR = 512, 64, 0.5
+PIXEL_KM2 = 1e-4  # one 10 m pixel
 OUT = ROOT / "outputs" / "flood"; OUT.mkdir(parents=True, exist_ok=True)
 PROB = DER / "flood_prob"; PROB.mkdir(exist_ok=True)
 EVENTS = {"flood_2017_08": ("2017-07-17", "2017-08-10"), "flood_2020_07": ("2020-06-07", "2020-07-13"),
           "flood_2024_07": ("2024-06-10", "2024-07-04"), "flood_2025_08": ("2025-07-23", "2025-08-16")}
 
-os.environ.setdefault("TW_OUT", str(ROOT / "cache" / "infer"))
 spec = importlib.util.spec_from_file_location("tg", MODELS / "flood" / "tgfloodnet.py")
 tg = importlib.util.module_from_spec(spec); spec.loader.exec_module(tg)
 DEV = tg.DEV
@@ -29,7 +29,7 @@ norm = json.load(open(WEIGHTS / "flood" / "norm.json"))
 MEAN = np.array(norm["mean"], np.float32)[:, None, None]; STD = np.array(norm["std"], np.float32)[:, None, None]
 models = []
 for s in (0, 1, 2):
-    m = tg.TGFloodNet().to(DEV).eval()
+    m = tg.TGFloodNet(pretrained=False).to(DEV).eval()
     m.load_state_dict(torch.load(WEIGHTS / "flood" / f"seed{s}.pt", map_location=DEV))
     models.append(m)
 
@@ -119,7 +119,7 @@ for date in sorted({d for pair in EVENTS.values() for d in pair}):
         p8 = np.where(np.isfinite(prob), np.round(np.nan_to_num(prob) * 254), 255).astype(np.uint8)
         write(f, p8, res=10, nodata=255, dtype="uint8")
     water[date] = np.where(p8 != 255, (p8 >= round(THR * 254)).astype(np.uint8), 255).astype(np.uint8)
-    print(f"{date}: water {(water[date] == 1).sum() * 1e-4:.1f} km2 ({time.time() - t0:.0f}s)", flush=True)
+    print(f"{date}: water {(water[date] == 1).sum() * PIXEL_KM2:.1f} km2 ({time.time() - t0:.0f}s)", flush=True)
 
 summary = {}
 for ev, (b, a) in EVENTS.items():
@@ -134,9 +134,9 @@ for ev, (b, a) in EVENTS.items():
     gdf["geometry"] = gdf.simplify(5)
     gdf.to_crs(4326).to_file(d / "new_water.geojson", driver="GeoJSON")
     st = {"event": ev, "before_date": b, "after_date": a, "model": "TG-FloodNet, 3-model ensemble",
-          "area_mapped_km2": round(valid.sum() * 1e-4, 1),
-          "water_before_km2": round(((wb == 1) & valid).sum() * 1e-4, 2), "water_after_km2": round(((wa == 1) & valid).sum() * 1e-4, 2),
-          "new_water_km2": round(new.sum() * 1e-4, 2), "new_water_polygons": int(len(gdf))}
+          "area_mapped_km2": round(valid.sum() * PIXEL_KM2, 1),
+          "water_before_km2": round(((wb == 1) & valid).sum() * PIXEL_KM2, 2), "water_after_km2": round(((wa == 1) & valid).sum() * PIXEL_KM2, 2),
+          "new_water_km2": round(new.sum() * PIXEL_KM2, 2), "new_water_polygons": int(len(gdf))}
     json.dump(st, open(d / "stats.json", "w"), indent=1)
     summary[ev] = st
     print(f"{ev}: before {st['water_before_km2']} km2, after {st['water_after_km2']} km2, new {st['new_water_km2']} km2", flush=True)
