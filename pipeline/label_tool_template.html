@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teesta Water Labeller</title>
+<style>
+:root{--bg:#f4f5f7;--panel:#fff;--ink:#1c2230;--muted:#5d6675;--line:#d5d9e0;--acc:#1f6feb;--water:#1e90ff;--unsure:#f2b705;--done:#2e9d57}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0}
+header .who{color:var(--muted)}
+header .sp{flex:1}
+button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--acc);color:#fff;border-color:var(--acc)}
+main{flex:1;display:flex;min-height:0}
+#list{width:220px;background:var(--panel);border-right:1px solid var(--line);overflow:auto;padding:8px}
+#list .t{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-radius:6px;cursor:pointer;margin-bottom:2px}
+#list .t:hover{background:#eef3fd}
+#list .t.cur{background:#dbe7fd;font-weight:600}
+.badge{font-size:11px;padding:1px 6px;border-radius:9px;background:#e8eaee;color:var(--muted)}
+.badge.done{background:#d6f0de;color:var(--done)}
+.badge.prog{background:#fff1c8;color:#8a6a00}
+#work{flex:1;display:flex;flex-direction:column;min-width:0}
+#toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+#toolbar .grp{display:flex;gap:4px;align-items:center;padding-right:10px;margin-right:4px;border-right:1px solid var(--line)}
+#toolbar label{color:var(--muted);font-size:12px}
+#stage{flex:1;overflow:auto;background:#2b2f36;position:relative}
+#canvasWrap{position:relative;margin:20px auto}
+#base,#overlay{position:absolute;left:0;top:0;image-rendering:pixelated}
+#overlay{cursor:crosshair;touch-action:none}
+#info{padding:6px 12px;background:var(--panel);border-top:1px solid var(--line);color:var(--muted);font-size:13px;display:flex;gap:18px;flex-wrap:wrap}
+#guide{width:300px;background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:12px 14px;font-size:13px}
+#guide h3{font-size:14px;margin:12px 0 4px}
+#guide ul{padding-left:18px;margin:4px 0}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+#start{position:fixed;inset:0;background:rgba(20,24,32,.55);display:flex;align-items:center;justify-content:center;z-index:10}
+#start .card{background:#fff;padding:22px 26px;border-radius:12px;width:min(440px,92vw)}
+#start input,#start select{font:inherit;width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;margin:4px 0 12px}
+.kbd{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#eef0f3;border-radius:4px;padding:0 4px}
+#warn{display:none;background:#fde8e8;color:#9b1c1c;border-bottom:1px solid #f5b5b5;padding:7px 14px;font-weight:600}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1c2230;color:#fff;padding:8px 14px;border-radius:8px;opacity:0;transition:opacity .3s;pointer-events:none}
+@media (max-width:1100px){#guide{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Teesta Water Labeller</h1>
+  <span class="who" id="who"></span>
+  <span class="sp"></span>
+  <span id="progress" class="who"></span>
+  <button id="btnGuide" title="Show or hide the guide">Guide</button>
+  <label class="who" style="cursor:pointer">Continue from file <input type="file" id="importFile" accept=".json" style="display:none"></label>
+  <button class="primary" id="btnExport">Download my labels</button>
+</header>
+<div id="warn">Autosave is NOT working in this browser (storage is blocked). Click "Download my labels" after every tile, or open the page in normal Chrome/Edge (not private mode).</div>
+<main>
+  <div id="list"></div>
+  <div id="work">
+    <div id="toolbar">
+      <div class="grp">
+        <button id="tWater" class="on" title="Paint water (B)"><span class="sw" style="background:var(--water)"></span>Water</button>
+        <button id="tUnsure" title="Paint unsure (U)"><span class="sw" style="background:var(--unsure)"></span>Unsure</button>
+        <button id="tErase" title="Erase back to land (E)">Eraser</button>
+        <button id="tFill" title="Fill an enclosed area with the chosen class (F)">Fill</button>
+      </div>
+      <div class="grp"><label>Brush</label><input type="range" id="size" min="1" max="25" value="4"><span id="sizeV">4</span></div>
+      <div class="grp">
+        <button id="undo" title="Undo (Ctrl+Z)">Undo</button><button id="redo" title="Redo (Ctrl+Y)">Redo</button>
+      </div>
+      <div class="grp">
+        <button data-layer="smooth" title="1">Radar smoothed</button>
+        <button data-layer="radar" title="2">Radar raw</button>
+        <button data-layer="vv" title="3">Radar grey</button>
+        <button data-layer="optical" title="4">Optical</button>
+        <button data-layer="water_view" title="5">Optical water view</button>
+        <button data-layer="map" title="6 (needs internet)">Background map</button>
+        <button data-layer="hand" title="7">Height above stream</button>
+      </div>
+      <div class="grp"><label>Labels</label><input type="range" id="alpha" min="0" max="100" value="45"><button id="hide" title="Hide or show labels (H)">Hide</button></div>
+      <div class="grp" style="border:none"><button id="zout">−</button><span id="zoomV"></span><button id="zin">+</button></div>
+      <button id="btnDone" class="primary" title="Mark this tile done and go to the next (D)">Done → next</button>
+    </div>
+    <div id="stage"><div id="canvasWrap"><img id="base" alt=""><canvas id="overlay" width="256" height="256"></canvas></div></div>
+    <div id="info"><span id="iTile"></span><span id="iDate"></span><span id="iOpt"></span><span id="iStat"></span><span id="iPx"></span></div>
+  </div>
+  <aside id="guide">
+    <h3>Your job</h3>
+    <p>Paint every pixel that is <b>water on the radar date</b> shown under the image. Everything you leave unpainted counts as <b>land</b>. Each pixel is 10 m; a tile is 2.56 km across.</p>
+    <h3>Reading the radar</h3>
+    <ul>
+      <li><b>Calm water is very dark</b>: black in "Radar grey", deep blue or black in the colour views. Rivers, ponds and flooded fields look like this.</li>
+      <li><b>Land is grey or bright</b>: fields, sand bars, trees, villages. Villages and trees are often bright yellow or white spots.</li>
+      <li><b>Flooded fields with plants sticking out</b> can look bright, not dark. If the optical image shows water there, paint it water.</li>
+      <li><b>Wind or rain</b> can make water look rough and grey. Use <span class="sw" style="background:var(--unsure)"></span><b>Unsure</b> if you cannot tell.</li>
+      <li>The grainy salt-and-pepper texture is normal radar noise; don't follow single dots. Paint the shapes.
+        <b>Radar smoothed</b> (the default) removes most of it; switch to <b>Radar raw</b> to check thin channels and edges.</li>
+      <li>Purple-ish patches on land are usually wet or smooth fields, not open water. Open water is clearly <b>darker</b> (deep blue to black).</li>
+    </ul>
+    <h3>Helper layers</h3>
+    <ul>
+      <li><b>Optical</b> and <b>Optical water view</b> (water = blue) are photos taken up to 3 days from the radar date, so water may have changed a little. White blobs are clouds; ignore them.</li>
+      <li><b>Background map</b> is an older photo of a normal day (needs internet). Use it to see villages, roads and ponds, not the flood.</li>
+      <li><b>Height above stream</b>: dark = low ground near streams. It is only a hint; trust the radar.</li>
+    </ul>
+    <h3>Rules</h3>
+    <ul>
+      <li>Do <b>not</b> use any other water map or AI tool. Your labels are the test answer key.</li>
+      <li>Keep <b>Unsure</b> small (ideally under 10 % of a tile). It is left out of scoring.</li>
+      <li>About 10–15 minutes per tile is normal. Zoom in for edges.</li>
+      <li>Your work is saved in this browser automatically. When finished, click <b>Download my labels</b> and send the file.</li>
+    </ul>
+    <h3>Keys</h3>
+    <p><span class="kbd">B</span> water, <span class="kbd">U</span> unsure, <span class="kbd">E</span> eraser, <span class="kbd">F</span> fill, <span class="kbd">[</span> <span class="kbd">]</span> brush size, <span class="kbd">1</span>–<span class="kbd">7</span> layers, <span class="kbd">H</span> hide labels, <span class="kbd">Ctrl+Z</span>/<span class="kbd">Ctrl+Y</span> undo/redo, <span class="kbd">D</span> done, <span class="kbd">N</span>/<span class="kbd">P</span> next/previous tile, mouse wheel + <span class="kbd">Ctrl</span> to zoom.</p>
+    <p style="color:var(--muted);font-size:12px">Background map: Esri World Imagery (Esri, Maxar, Earthstar Geographics). Radar: Sentinel-1 (ESA) via NASA ASF HyP3. Optical: NASA HLS.</p>
+  </aside>
+</main>
+<div id="start"><div class="card">
+  <h2 style="margin-top:0">Teesta Water Labeller</h2>
+  <p id="startNote">Enter your name to start.</p>
+  <label>Your name</label><input id="nameIn" placeholder="e.g. Rahim">
+  <button class="primary" id="startBtn" style="width:100%">Start</button>
+</div></div>
+<div id="toast"></div>
+<script>
+const TILES = /*__TILES__*/null;
+const PART = /*__PART__*/"";
+const N = 256, VERSION = "1.1";
+let me = {name: "", group: "ALL"}, tiles = [], cur = -1, mask = null, tool = "water", layer = "smooth",
+    zoom = 3, alpha = 0.45, show = true, undoStack = [], redoStack = [], state = {}, painting = false, last = null, t0 = null;
+const $ = id => document.getElementById(id);
+const store = {get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+               set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }};
+const key = id => `tw_lab_${me.name}_${id}`;
+function toast(m, ms) { const t = $("toast"); t.textContent = m; t.style.opacity = 1; clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = 0, ms || (m.length > 40 ? 4000 : 1800)); }
+
+// run-length encoding of the 0/1/2 mask: "value:count,value:count,..."
+function rle(m) { const out = []; let v = m[0], c = 0; for (let i = 0; i < m.length; i++) { if (m[i] === v) c++; else { out.push(v + ":" + c); v = m[i]; c = 1; } } out.push(v + ":" + c); return out.join(","); }
+function unrle(s) { const m = new Uint8Array(N * N); let p = 0; for (const part of s.split(",")) { const [v, c] = part.split(":").map(Number); m.fill(v, p, p + c); p += c; } return m; }
+
+function saveState() { store.set(`tw_lab_state_${me.name}`, JSON.stringify(state)); }
+function loadState() { try { state = JSON.parse(store.get(`tw_lab_state_${me.name}`) || "{}"); } catch (e) { state = {}; } }
+
+function start() {
+  me.name = $("nameIn").value.trim().replace(/[^\p{L}\p{M}\p{N}\- ]/gu, "").replace(/\s+/g, " ") || "anonymous";
+  store.set("tw_lab_lastname", me.name);
+  let ok = false; try { localStorage.setItem("tw_lab_probe", "1"); ok = localStorage.getItem("tw_lab_probe") === "1"; localStorage.removeItem("tw_lab_probe"); } catch (e) { ok = false; }
+  if (!ok) $("warn").style.display = "block";
+  tiles = TILES.slice();  // single labeller: all tiles
+  $("start").style.display = "none";
+  $("who").textContent = `${me.name}${PART ? " · " + PART : ""} · ${tiles.length} tiles`;
+  loadState(); renderList(); open(0); setZoom(zoom);
+}
+function renderList() {
+  const L = $("list"); L.innerHTML = "";
+  let done = 0;
+  tiles.forEach((t, i) => {
+    const s = state[t.id] || {}; if (s.done) done++;
+    const d = document.createElement("div"); d.className = "t" + (i === cur ? " cur" : "");
+    d.innerHTML = `<span>${t.id.split("_")[0]} <span style="color:var(--muted);font-weight:400">${t.date}</span></span>` +
+      `<span class="badge ${s.done ? "done" : s.edits ? "prog" : ""}">${s.done ? "done" : s.edits ? "started" : "new"}</span>`;
+    d.onclick = () => open(i); L.appendChild(d);
+  });
+  $("progress").textContent = `${done} / ${tiles.length} done`;
+}
+function stopClock() { if (cur >= 0 && t0) { const s = state[tiles[cur].id] = state[tiles[cur].id] || {}; s.seconds = (s.seconds || 0) + (Date.now() - t0) / 1000; t0 = null; saveState(); } }
+function open(i) {
+  if (i < 0 || i >= tiles.length) return;
+  stopClock(); cur = i; const t = tiles[i];
+  const saved = store.get(key(t.id)); mask = saved ? unrle(saved) : new Uint8Array(N * N);
+  undoStack = []; redoStack = []; t0 = Date.now();
+  for (const b of document.querySelectorAll("[data-layer]")) b.disabled = (b.dataset.layer === "optical" || b.dataset.layer === "water_view") && !t.optical;
+  if ((layer === "optical" || layer === "water_view") && !t.optical) layer = "smooth";
+  setLayer(layer); draw(); renderList();
+  $("iTile").textContent = "Tile " + t.id; $("iDate").textContent = "Radar date: " + t.date;
+  $("iOpt").textContent = "Optical: " + t.optical_note; stats();
+}
+function setLayer(l) {
+  layer = l; const t = tiles[cur];
+  for (const b of document.querySelectorAll("[data-layer]")) b.classList.toggle("on", b.dataset.layer === l);
+  const img = $("base");
+  if (l === "map") { const [x0, y0, x1, y1] = t.bbox32645;
+    img.style.imageRendering = "auto";
+    img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${x0},${y0},${x1},${y1}&bboxSR=32645&imageSR=32645&size=768,768&format=jpg&f=image`;
+    img.onerror = () => toast("Background map needs an internet connection");
+  } else { img.style.imageRendering = "pixelated"; img.src = t[l]; }
+}
+function setZoom(z) { zoom = Math.max(1, Math.min(8, z)); const s = N * zoom + "px";
+  for (const el of [$("base"), $("overlay"), $("canvasWrap")]) { el.style.width = s; el.style.height = s; }
+  $("zoomV").textContent = zoom + "×"; }
+function draw() {
+  const ctx = $("overlay").getContext("2d"), im = ctx.createImageData(N, N), a = show ? Math.round(alpha * 255) : 0;
+  for (let i = 0; i < N * N; i++) { const v = mask[i], o = i * 4;
+    if (v === 1) { im.data[o] = 30; im.data[o + 1] = 144; im.data[o + 2] = 255; im.data[o + 3] = a; }
+    else if (v === 2) { im.data[o] = 242; im.data[o + 1] = 183; im.data[o + 2] = 5; im.data[o + 3] = a; } }
+  ctx.putImageData(im, 0, 0);
+}
+function stats() { let w = 0, u = 0; for (const v of mask) { if (v === 1) w++; else if (v === 2) u++; }
+  $("iStat").textContent = `water ${(100 * w / (N * N)).toFixed(1)} %, unsure ${(100 * u / (N * N)).toFixed(1)} %`; }
+function persist() { const t = tiles[cur]; store.set(key(t.id), rle(mask)); const s = state[t.id] = state[t.id] || {}; s.edits = (s.edits || 0) + 1; s.updated = new Date().toISOString(); saveState(); stats(); }
+function pushUndo() { undoStack.push(mask.slice()); if (undoStack.length > 40) undoStack.shift(); redoStack = []; }
+function val() { return tool === "water" ? 1 : tool === "unsure" ? 2 : 0; }
+function paintAt(x, y) { const r = +$("size").value, v = val(), r2 = (r - 0.5) * (r - 0.5);
+  for (let dy = -r + 1; dy < r; dy++) for (let dx = -r + 1; dx < r; dx++) {
+    if (dx * dx + dy * dy > r2 && r > 1) continue; const xx = x + dx, yy = y + dy;
+    if (xx >= 0 && yy >= 0 && xx < N && yy < N) mask[yy * N + xx] = v; } }
+function line(a, b) { const n = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y), 1);
+  for (let i = 0; i <= n; i++) paintAt(Math.round(a.x + (b.x - a.x) * i / n), Math.round(a.y + (b.y - a.y) * i / n)); }
+function fill(x, y) { const target = mask[y * N + x], v = tool === "fill" ? fillVal : val(); if (target === v) return;
+  const q = [y * N + x]; mask[q[0]] = v;
+  while (q.length) { const p = q.pop(), px = p % N, py = (p - px) / N;
+    for (const [nx, ny] of [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]])
+      if (nx >= 0 && ny >= 0 && nx < N && ny < N && mask[ny * N + nx] === target) { mask[ny * N + nx] = v; q.push(ny * N + nx); } } }
+let fillVal = 1;
+function pos(e) { const r = $("overlay").getBoundingClientRect(), c = v => Math.max(0, Math.min(N - 1, v));
+  return {x: c(Math.floor((e.clientX - r.left) / r.width * N)), y: c(Math.floor((e.clientY - r.top) / r.height * N))}; }
+const ov = $("overlay");
+ov.addEventListener("pointerdown", e => { if (e.button !== 0) return; const p = pos(e); pushUndo();
+  if (tool === "fill") { fill(p.x, p.y); draw(); persist(); return; }
+  painting = true; last = p; paintAt(p.x, p.y); draw(); ov.setPointerCapture(e.pointerId); });
+ov.addEventListener("pointermove", e => { const p = pos(e);
+  $("iPx").textContent = (p.x >= 0 && p.y >= 0 && p.x < N && p.y < N) ? `pixel ${p.x}, ${p.y}` : "";
+  if (!painting) return; line(last, p); last = p; draw(); });
+const endPaint = () => { if (painting) { painting = false; persist(); } };
+ov.addEventListener("pointerup", endPaint); ov.addEventListener("pointercancel", endPaint);
+$("stage").addEventListener("wheel", e => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? 1 : -1)); } }, {passive: false});
+
+function setTool(t) { if (t === "fill" && tool !== "fill") { fillVal = tool === "unsure" ? 2 : tool === "erase" ? 0 : 1; }
+  tool = t; for (const [id, n] of [["tWater", "water"], ["tUnsure", "unsure"], ["tErase", "erase"], ["tFill", "fill"]]) $(id).classList.toggle("on", n === t);
+  if (t === "fill") toast(`Fill paints with ${fillVal === 1 ? "water" : fillVal === 2 ? "unsure" : "land"} (the class chosen before Fill)`); }
+$("tWater").onclick = () => setTool("water"); $("tUnsure").onclick = () => setTool("unsure");
+$("tErase").onclick = () => setTool("erase"); $("tFill").onclick = () => setTool("fill");
+$("size").oninput = () => $("sizeV").textContent = $("size").value;
+$("alpha").oninput = () => { alpha = $("alpha").value / 100; draw(); };
+$("hide").onclick = () => { show = !show; $("hide").textContent = show ? "Hide" : "Show"; draw(); };
+$("undo").onclick = () => { if (!undoStack.length) return; redoStack.push(mask.slice()); mask = undoStack.pop(); draw(); persist(); };
+$("redo").onclick = () => { if (!redoStack.length) return; undoStack.push(mask.slice()); mask = redoStack.pop(); draw(); persist(); };
+$("zin").onclick = () => setZoom(zoom + 1); $("zout").onclick = () => setZoom(zoom - 1);
+for (const b of document.querySelectorAll("[data-layer]")) b.onclick = () => setLayer(b.dataset.layer);
+$("btnDone").onclick = () => { if (cur < 0) return; const s = state[tiles[cur].id] = state[tiles[cur].id] || {};
+  if (!mask.some(v => v === 1) && !confirm("No water is painted on this tile. Mark it done anyway?")) return;
+  s.done = true; s.edits = s.edits || 1; store.set(key(tiles[cur].id), rle(mask)); saveState();
+  const undone = i => !(state[tiles[i].id] || {}).done;
+  let next = -1;
+  for (let k = 1; k <= tiles.length; k++) { const i = (cur + k) % tiles.length; if (undone(i)) { next = i; break; } }
+  if (next >= 0) { open(next); toast("Saved"); }
+  else { renderList(); toast("All tiles done. Click \"Download my labels\" and send the file."); } };
+$("btnGuide").onclick = () => { const g = $("guide"); g.style.display = getComputedStyle(g).display === "none" ? "block" : "none"; };
+$("btnExport").onclick = () => { stopClock(); t0 = Date.now();
+  const out = {tool_version: VERSION, labeller: me.name, part: PART, exported_at: new Date().toISOString(), tiles: {}};
+  for (const t of tiles) { const m = store.get(key(t.id)); const s = state[t.id] || {};
+    if (m || s.done) out.tiles[t.id] = {rle: m || rle(new Uint8Array(N * N)), done: !!s.done, seconds: Math.round(s.seconds || 0), edits: s.edits || 0, updated: s.updated || null}; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], {type: "application/json"}));
+  a.download = `teesta_labels_${PART ? PART.replace(/\s+/g, "") + "_" : ""}${me.name.replace(/\s+/g, "_")}.json`; a.click();
+  toast(`Downloaded ${Object.keys(out.tiles).length} tiles`); };
+$("importFile").onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader();
+  r.onload = () => { try { const d = JSON.parse(r.result); let n = 0;
+    const mine = new Set(tiles.map(t => t.id)); let skipped = 0;
+    for (const [id, v] of Object.entries(d.tiles || {})) {
+      let good = mine.has(id) && v && typeof v.rle === "string";
+      if (good) { try { const m = unrle(v.rle); good = v.rle.split(",").reduce((s, p) => s + (+p.split(":")[1] || 0), 0) === N * N && m.every(x => x <= 2); } catch (e2) { good = false; } }
+      if (!good) { skipped++; continue; }
+      store.set(key(id), v.rle); state[id] = {done: !!v.done, seconds: v.seconds || 0, edits: v.edits || 1, updated: v.updated || null}; n++; }
+    saveState(); open(Math.max(cur, 0)); renderList();
+    toast(`Loaded ${n} tiles from file` + (skipped ? ` (${skipped} skipped: not on this page or damaged)` : "")); } catch (err) { toast("Could not read that file"); } };
+  r.readAsText(f); };
+document.addEventListener("keydown", e => {
+  if (cur < 0) return;  // nothing to act on before Start
+  if (document.activeElement && document.activeElement.tagName === "INPUT" && document.activeElement.type !== "range") return;
+  if (e.ctrlKey && e.key.toLowerCase() === "z") { e.preventDefault(); $("undo").click(); return; }
+  if (e.ctrlKey && e.key.toLowerCase() === "y") { e.preventDefault(); $("redo").click(); return; }
+  if (e.ctrlKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "b") setTool("water"); else if (k === "u") setTool("unsure"); else if (k === "e") setTool("erase"); else if (k === "f") setTool("fill");
+  else if (k === "[") { $("size").value = Math.max(1, +$("size").value - 1); $("size").oninput(); }
+  else if (k === "]") { $("size").value = Math.min(25, +$("size").value + 1); $("size").oninput(); }
+  else if (k === "h") $("hide").click(); else if (k === "d") $("btnDone").click();
+  else if (k === "n") open(cur + 1); else if (k === "p") open(cur - 1);
+  else if ("1234567".includes(k)) { const b = document.querySelectorAll("[data-layer]")[+k - 1]; if (!b.disabled) b.click(); }
+});
+window.addEventListener("beforeunload", stopClock);
+$("startNote").textContent = `Enter your name to start. ${PART ? PART + ": " : ""}you will label ${TILES.length} tiles.`;
+if (PART) document.title = "Teesta Water Labeller · " + PART;
+$("nameIn").value = store.get("tw_lab_lastname") || "";
+$("startBtn").onclick = start; $("nameIn").addEventListener("keydown", e => { if (e.key === "Enter") start(); });
+</script>
+</body>
+</html>

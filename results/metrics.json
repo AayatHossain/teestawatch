@@ -1,0 +1,61 @@
+{
+ "flood_mapping": {
+  "model": "TG-FloodNet, Teesta fine-tuned, 3-model ensemble",
+  "hand_labelled_teesta_tiles": {
+   "tiles": 50,
+   "iou": 0.689,
+   "iou_ci95": [
+    0.64,
+    0.731
+   ],
+   "f1": 0.816,
+   "precision": 0.872,
+   "recall": 0.766
+  },
+  "hand_labelled_2025_tiles": {
+   "tiles": 13,
+   "iou": 0.72,
+   "f1": 0.837,
+   "precision": 0.881,
+   "recall": 0.798
+  },
+  "nasa_opera_dswx_s1_same_2025_tiles": {
+   "iou": 0.434,
+   "f1": 0.605,
+   "precision": 0.676,
+   "recall": 0.548
+  },
+  "sen1floods11_test": {
+   "iou": 0.667,
+   "f1": 0.8
+  }
+ },
+ "erosion_forecast": {
+  "model": "ConvGRU U-Net, 3-model ensemble, trained on 2018-2023",
+  "2025": {
+   "auc": 0.918,
+   "average_precision": 0.292,
+   "base_rate": 0.0152,
+   "times_chance": 19.2,
+   "f1": 0.36
+  },
+  "2026": {
+   "auc": 0.952,
+   "average_precision": 0.226,
+   "base_rate": 0.007,
+   "times_chance": 32.2,
+   "f1": 0.308
+  },
+  "recent_erosion_baseline_auc": {
+   "2025": 0.843,
+   "2026": 0.907
+  }
+ },
+ "village_risk": {
+  "backtest": "fit 2016-2019, predict land reached by 2025",
+  "auc": 0.847,
+  "homes_analysed": 395693,
+  "settlements": 7664,
+  "backtest_points": 40000
+ }
+}
