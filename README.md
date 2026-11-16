@@ -2,12 +2,11 @@
 
 The AI and data pipeline behind **[TeestaWatch](https://aayathossain.github.io/teestawatch-web/)**. It maps floods, tracks riverbank erosion, forecasts next year's land loss, and ranks the villages in the path of the Teesta River in northern Bangladesh, using NASA and Sentinel-1 satellite data.
 
-<p align="center">
-  <img src="docs/screens/home.jpg" width="49%" alt="TeestaWatch home">
-  <img src="docs/screens/floods.jpg" width="49%" alt="Flood maps">
-  <img src="docs/screens/riverbank.jpg" width="49%" alt="2027 erosion forecast">
-  <img src="docs/screens/villages.jpg" width="49%" alt="Villages at risk">
-</p>
+<div align="center">
+  <img src="docs/screens/home.jpg" width="48%" alt="TeestaWatch home">&nbsp;<img src="docs/screens/floods.jpg" width="48%" alt="Flood maps">
+  <br>
+  <img src="docs/screens/riverbank.jpg" width="48%" alt="2027 erosion forecast">&nbsp;<img src="docs/screens/villages.jpg" width="48%" alt="Villages at risk">
+</div>
 
 ## The problem
 
