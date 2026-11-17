@@ -1,4 +1,4 @@
-# TeestaWatch ML
+# TeestaWatch
 
 **AI and satellite data that map floods, forecast riverbank erosion and warn the villages in the path of the Teesta River in Bangladesh.**
 
@@ -174,8 +174,8 @@ results/metrics.json         test scores
 ## Getting started
 
 ```bash
-git clone https://github.com/AayatHossain/teestawatch-ml.git
-cd teestawatch-ml
+git clone https://github.com/AayatHossain/teestawatch.git
+cd teestawatch
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
@@ -188,7 +188,7 @@ Python 3.12. A CUDA GPU is recommended for inference and needed for training.
 machine urs.earthdata.nasa.gov login <user> password <password>
 ```
 
-**Trained weights.** Download `teestawatch-ml-weights.zip` from the [latest release](https://github.com/AayatHossain/teestawatch-ml/releases/latest) and unzip it in the repository root:
+**Trained weights.** Download `teestawatch-weights.zip` from the [latest release](https://github.com/AayatHossain/teestawatch/releases/latest) and unzip it in the repository root:
 
 ```
 weights/flood/seed0.pt  seed1.pt  seed2.pt  norm.json
