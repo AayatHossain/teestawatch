@@ -28,15 +28,6 @@ Everything is shown on a free public website: **[TeestaWatch](https://aayathossa
   <img src="docs/screens/riverbank.jpg" width="48%" alt="2027 erosion forecast">&nbsp;<img src="docs/screens/villages.jpg" width="48%" alt="Villages at risk">
 </div>
 
-## What's inside
-
-- **Data pipeline.** Pulls Sentinel-1 radar, NASA optical images, NASA water maps and elevation data, processes them, and puts them all on one common map grid.
-- **TG-FloodNet.** The flood-mapping network: its design, its training on a public flood benchmark, and its fine-tuning on the Teesta.
-- **Erosion forecast.** The ConvGRU U-Net that predicts which land the river will take next year.
-- **Village risk model.** Estimates when the river will reach each of 395,693 homes.
-- **Evaluation.** The independent test on 50 hand-labelled tiles, including the comparison with NASA's own flood product.
-- **Website data.** The export that turns every result into the maps and numbers on the website.
-
 ## At a glance
 
 | | |
@@ -119,7 +110,22 @@ A convolutional GRU carries the river's movement from year to year, and a U-Net 
    - **Medium:** within 1 km, or under 5 years away.
    - **Low:** everything else.
 
+## Built with
+
+| Area | Tools |
+|---|---|
+| Deep learning | PyTorch, torchvision (ResNet-34 backbones) |
+| Geospatial processing | rasterio, GeoPandas, Shapely, pyproj, pysheds (river drainage and HAND) |
+| Data and analysis | NumPy, pandas, SciPy, scikit-learn, scikit-image, DuckDB |
+| Satellite data access | NASA earthaccess, ASF Search, ASF HyP3 SDK |
+| Visualisation | Matplotlib |
+| Training hardware | Kaggle GPUs |
+| Website ([teestawatch-web](https://github.com/AayatHossain/teestawatch-web)) | React 19, TypeScript, Vite, MapLibre GL, Tailwind CSS, Framer Motion, GSAP, Recharts |
+
 ## Terms used
+
+<details>
+<summary>Show the glossary</summary>
 
 | Term | Meaning |
 |---|---|
@@ -141,6 +147,8 @@ A convolutional GRU carries the river's movement from year to year, and a U-Net 
 | ConvGRU | A memory layer that tracks change over time while keeping the map's layout |
 | First-passage model | Gives the probability that a bank drifting at a given average speed, with year-to-year variation, covers a distance within a given time (an inverse-Gaussian distribution) |
 | Backtest | Fitting a model on past years only and checking it against what happened later |
+
+</details>
 
 ## Repository layout
 
@@ -214,7 +222,9 @@ python s23_web_export.py             # writes web_data/ for the website
 
 The remaining steps are only needed to retrain or relabel: `s02` lists the available NASA granules, `s04` downloads Sen1Floods11, `s11`-`s12` build the hand-labelling pages, and `s13`-`s14` build the Teesta fine-tuning set.
 
-**Training from scratch.**
+<details>
+<summary><b>Training from scratch</b></summary>
+
 
 | Model | Data | Command |
 |---|---|---|
@@ -233,6 +243,8 @@ Outputs go to `runs/<model>/`.
 | `TW_FT`, `TW_EROSION_DATA` | Fine-tuning pack and erosion stacks (default `data/ft_teesta`, `data/erosion_pack`) |
 | `TW_EPOCHS`, `TW_STEPS` | Override the training length |
 
+</details>
+
 ## Data sources
 
 | Data | Provider | Licence |
@@ -245,10 +257,6 @@ Outputs go to `runs/<model>/`.
 | Google Open Buildings (VIDA merge) | Google, VIDA via Source Cooperative | CC BY 4.0 / ODbL |
 | Rivers, villages | © OpenStreetMap contributors | ODbL |
 | Administrative boundaries | geoBoundaries | CC BY 4.0 |
-
-## Live demo
-
-**https://aayathossain.github.io/teestawatch-web/**
 
 ## License
 
